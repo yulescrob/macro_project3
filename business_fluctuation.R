@@ -4,8 +4,11 @@ library(readr)
 library(tidyr)
 library(ggplot2)
 library(lmtest)
+library(tidyverse)
+library(lubridate)
 
-data <- read_csv("~/OneDrive - University of Cincinnati/Macro/Project 3/cycles_data.csv")
+#Part 1: Cross-Country Business Cycle Analysis
+data <- read_csv("cycles_data.csv")
 
 #first differences for all economic variables
 df_diff <- data %>%
@@ -40,7 +43,7 @@ volatility <- df_diff %>%
     
     Expend_Canada_vol = sd(Expend_Canada_diff, na.rm = TRUE),
     Expend_USA_vol = sd(Expend_USA_diff, na.rm = TRUE),
-    Trade_Germany_vol = sd(Expend_Germany_diff, na.rm = TRUE),
+    Expend_Germany_vol = sd(Expend_Germany_diff, na.rm = TRUE),
     
     Bond_Canada_vol = sd(Bond_Canada_diff, na.rm = TRUE),
     Bond_USA_vol = sd(Bond_USA_diff, na.rm = TRUE),
@@ -69,14 +72,100 @@ correlations <- df_diff %>%
 # print correlations
 print(correlations)
 
+# clean data for visualization
+correlations_clean <- correlations %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Correlation") %>%
+  separate(Variable, into = c("Indicator", "Country"), sep = "_", extra = "merge")
+
+# Plot correlation results
+ggplot(correlations_clean, aes(x = Indicator, y = Correlation, fill = Country)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Correlation with GDP (Cyclicality)", y = "Correlation Coefficient") +
+  geom_hline(yintercept = 0, linetype = "dashed")
 
 
 # cross-correlations between GDP time series of different countries
 # removed missing values from GDP data before using ccf()
 df_clean <- df_diff %>% drop_na(GDP_Canada_diff, GDP_USA_diff, GDP_Germany_diff)
 
-# Compute cross-correlations 
+# Compute cross-correlations, ACF
 ccf(df_clean$GDP_Canada_diff, df_clean$GDP_USA_diff, main="Canada vs USA GDP Cross-Correlation")
 ccf(df_clean$GDP_Canada_diff, df_clean$GDP_Germany_diff, main="Canada vs Germany GDP Cross-Correlation")
 ccf(df_clean$GDP_USA_diff, df_clean$GDP_Germany_diff, main="USA vs Germany GDP Cross-Correlation")
 
+
+
+#Part 2: Event Study – The Global Financial Crisis and One Other Recession
+
+# Load the dataset
+data <- read.csv("GERdat.csv")
+
+# Convert observation date to date format
+data$observation_date <- as.Date(data$observation_date, format="%m/%d/%y")
+
+# Define recession periods
+gfc_period <- data %>% filter(observation_date >= "2007-10-01" & observation_date <= "2009-09-30")
+covid_period <- data %>% filter(observation_date >= "2020-01-01" & observation_date <= "2020-06-30")
+
+# Define pre-recession and post-recession periods
+pre_gfc <- data %>% filter(observation_date >= "2004-01-01" & observation_date < "2007-10-01")
+post_gfc <- data %>% filter(observation_date > "2009-09-30" & observation_date <= "2012-12-31")
+
+pre_covid <- data %>% filter(observation_date >= "2017-01-01" & observation_date < "2020-01-01")
+post_covid <- data %>% filter(observation_date > "2020-06-30" & observation_date <= "2022-12-31")
+
+# Plot GDP 
+ggplot(data, aes(x=observation_date, y=GDP)) +
+  geom_line(color="blue") +
+  geom_vline(xintercept=as.Date(c("2008-01-01", "2009-09-30")), linetype="dashed", color="red") +
+  geom_vline(xintercept=as.Date(c("2020-01-01", "2020-06-30")), linetype="dashed", color="green") +
+  labs(title="GDP Trends Before, During, and After Recessions", x="Year", y="GDP") +
+  theme_minimal()
+
+# Plot Unemployment
+ggplot(data, aes(x=observation_date, y=Unemployment)) +
+  geom_line(color="darkred") +
+  geom_vline(xintercept=as.Date(c("2008-01-01", "2009-09-30")), linetype="dashed", color="red") +
+  geom_vline(xintercept=as.Date(c("2020-01-01", "2020-06-30")), linetype="dashed", color="green") +
+  labs(title="Unemployment Rate Before, During, and After Recessions", x="Year", y="Unemployment Rate (%)") +
+  theme_minimal()
+
+#Summary Statistics for GDP and Unemployment During Crises
+gfc_summary <- gfc_period %>% summarize(
+  avg_GDP = mean(GDP, na.rm = TRUE),
+  min_GDP = min(GDP, na.rm = TRUE),
+  max_GDP = max(GDP, na.rm = TRUE),
+  avg_Unemployment = mean(Unemployment, na.rm = TRUE),
+  min_Unemployment = min(Unemployment, na.rm = TRUE),
+  max_Unemployment = max(Unemployment, na.rm = TRUE)
+)
+
+covid_summary <- covid_period %>% summarize(
+  avg_GDP = mean(GDP, na.rm = TRUE),
+  min_GDP = min(GDP, na.rm = TRUE),
+  max_GDP = max(GDP, na.rm = TRUE),
+  avg_Unemployment = mean(Unemployment, na.rm = TRUE),
+  min_Unemployment = min(Unemployment, na.rm = TRUE),
+  max_Unemployment = max(Unemployment, na.rm = TRUE)
+)
+
+print(gfc_summary)
+
+print(covid_summary)
+
+# Plot 10 Year yield
+ggplot(data, aes(x=observation_date, y=X10YearYield)) +
+  geom_line(color="purple") +
+  geom_vline(xintercept=as.Date(c("2008-01-01", "2009-09-30")), linetype="dashed", color="red") +
+  geom_vline(xintercept=as.Date(c("2020-01-01", "2020-06-30")), linetype="dashed", color="green") +
+  labs(title="10-Year Government Bond Yield Trends", x="Year", y="Yield (%)") +
+  theme_minimal()
+
+# Plot CPI inflation
+ggplot(data, aes(x=observation_date, y=CPI)) +
+  geom_line(color="orange") +
+  geom_vline(xintercept=as.Date(c("2008-01-01", "2009-09-30")), linetype="dashed", color="red") +
+  geom_vline(xintercept=as.Date(c("2020-01-01", "2020-06-30")), linetype="dashed", color="green") +
+  labs(title="Consumer Price Index (CPI) Trends", x="Year", y="CPI") +
+  theme_minimal()
