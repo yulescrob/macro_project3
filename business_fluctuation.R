@@ -169,3 +169,98 @@ ggplot(data, aes(x=observation_date, y=CPI)) +
   geom_vline(xintercept=as.Date(c("2020-01-01", "2020-06-30")), linetype="dashed", color="green") +
   labs(title="Consumer Price Index (CPI) Trends", x="Year", y="CPI") +
   theme_minimal()
+
+
+#Part 3: Firm-Level Responses Using WRDS Compustat Data
+debteq_roe_roa <- read.csv("debteq_roe_roa.csv")
+fundamentals_quarterly <- read.csv("other dta.csv")  # Renaming other data
+
+# Convert to Date format
+debteq_roe_roa$qdate <- as.Date(debteq_roe_roa$qdate, format="%m/%d/%y")
+fundamentals_quarterly$datadate <- as.Date(fundamentals_quarterly$datadate, format="%m/%d/%y")
+
+# Filter data to include only up to 2011 so there isn;t too mich post GFC data
+debteq_roe_roa <- debteq_roe_roa %>% filter(qdate <= "2011-12-31")
+fundamentals_quarterly <- fundamentals_quarterly %>% filter(datadate <= "2011-12-31")
+
+# Merge datasets on matching dates because data was downloaded form 2 different queries
+firm_data <- merge(debteq_roe_roa, fundamentals_quarterly, by.x = "qdate", by.y = "datadate", all = TRUE)
+
+# Compute Firm-Level Indicators
+firm_data <- firm_data %>%
+  arrange(TICKER, qdate) %>%
+  group_by(TICKER) %>%
+  mutate(
+    revenue_growth = (revtq - lag(revtq)) / lag(revtq) * 100,  # Revenue Growth %
+    investment_intensity = capxy / atq * 100,                  # Investment as % of Assets
+    return_on_assets = roa                                     # Return on Assets (ROA)
+  ) %>%
+  ungroup()
+
+# Define GFC period (2007 Q4 – 2009 Q3)
+gfc_period <- firm_data %>%
+  filter(qdate >= "2007-10-01" & qdate <= "2009-09-30")
+
+# Summary Statistics Before, During, and After GFC
+summary_stats <- firm_data %>%
+  mutate(period = case_when(
+    qdate < "2007-10-01" ~ "Pre-GFC",
+    qdate >= "2007-10-01" & qdate <= "2009-09-30" ~ "GFC",
+    qdate > "2009-09-30" ~ "Post-GFC"
+  )) %>%
+  group_by(period) %>%
+  summarize(
+    avg_revenue_growth = mean(revenue_growth, na.rm = TRUE),
+    avg_investment_intensity = mean(investment_intensity, na.rm = TRUE),
+    avg_debt_to_equity = mean(de_ratio, na.rm = TRUE),
+    avg_return_on_assets = mean(return_on_assets, na.rm = TRUE)
+  )
+
+print(summary_stats)
+
+# Visualizing variable trends over time
+
+# Define recession start and end dates for graph visualization
+recession_start <- as.Date("2007-10-01")
+recession_end <- as.Date("2009-09-30")
+
+# Revenue Growth 
+ggplot(firm_data, aes(x = qdate, y = revenue_growth)) +
+  geom_line(color = "blue") +
+  geom_vline(xintercept = as.numeric(recession_start), linetype = "dotted", color = "red") +
+  geom_vline(xintercept = as.numeric(recession_end), linetype = "dotted", color = "red") +
+  labs(title = "Revenue Growth Over Time", x = "Year", y = "Revenue Growth (%)") +
+  theme_minimal()
+
+# Investment Intensity
+ggplot(firm_data, aes(x = qdate, y = investment_intensity)) +
+  geom_line(color = "green") +
+  geom_vline(xintercept = as.numeric(recession_start), linetype = "dotted", color = "red") +
+  geom_vline(xintercept = as.numeric(recession_end), linetype = "dotted", color = "red") +
+  labs(title = "Investment Intensity Over Time", x = "Year", y = "Investment as % of Assets") +
+  theme_minimal()
+
+# DE Ratio
+ggplot(firm_data, aes(x = qdate, y = de_ratio)) +
+  geom_line(color = "red") +
+  geom_vline(xintercept = as.numeric(recession_start), linetype = "dotted", color = "black") +
+  geom_vline(xintercept = as.numeric(recession_end), linetype = "dotted", color = "black") +
+  labs(title = "Debt-to-Equity Ratio Over Time", x = "Year", y = "Debt-to-Equity Ratio") +
+  theme_minimal()
+
+# ROA
+ggplot(firm_data, aes(x = qdate, y = return_on_assets)) +
+  geom_line(color = "purple") +
+  geom_vline(xintercept = as.numeric(recession_start), linetype = "dotted", color = "black") +
+  geom_vline(xintercept = as.numeric(recession_end), linetype = "dotted", color = "black") +
+  labs(title = "Return on Assets (ROA) Over Time", x = "Year", y = "ROA (%)") +
+  theme_minimal()
+
+#Revenue
+ggplot(firm_data, aes(x = qdate, y = revtq)) +
+  geom_line(color = "blue") +
+  geom_vline(xintercept = as.numeric(recession_start), linetype = "dotted", color = "red") +
+  geom_vline(xintercept = as.numeric(recession_end), linetype = "dotted", color = "red") +
+  labs(title = "Revenue Over Time", x = "Year", y = "Revenue") +
+  theme_minimal()
+
